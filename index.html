@@ -125,6 +125,7 @@ circle{fill:none;stroke-width:4}
 <div id="status"></div>
 <p class="note">The overall rating is the average of all 20 categories. The circle and score automatically change colour. Video export is WebM and can be imported into CapCut.</p>
 </section>
+
 <script>
 const cats=[
 "Land","Population","GDP","GDP per capita","HDI","Military",
@@ -188,6 +189,170 @@ $("png").onclick=async()=>{
   const canvas=await html2canvas($("preview"),{backgroundColor:"#0e0e0e",scale:2});
   const a=document.createElement("a");a.href=canvas.toDataURL("image/png");a.download="country-rating.png";a.click();
  }catch(e){$("status").textContent=e.message}
+};
+
+$("video").onclick = async () => {
+  const status = $("status");
+  try {
+    if (!window.MediaRecorder) {
+      throw new Error("Video recording is not supported by this browser. Try Chrome.");
+    }
+    const duration = Number($("duration").value);
+    const canvas = document.createElement("canvas");
+    canvas.width = 720;
+    canvas.height = 1280;
+    const ctx = canvas.getContext("2d");
+    const stream = canvas.captureStream(30);
+    const mime = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm"
+    ].find(type => MediaRecorder.isTypeSupported(type));
+    if (!mime) {
+      stream.getTracks().forEach(track => track.stop());
+      throw new Error("WebM export is not supported in this browser.");
+    }
+    const recorder = new MediaRecorder(stream, { mimeType: mime });
+    const chunks = [];
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    const done = new Promise((resolve, reject) => {
+      recorder.onstop = resolve;
+      recorder.onerror = () => reject(new Error("Video recording failed."));
+    });
+    const start = performance.now();
+
+    function roundedRect(x, y, w, h, r, fill) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    function text(str, x, y, size, color = "white", weight = "normal", align = "left") {
+      ctx.font = `${weight} ${size}px Arial`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.fillText(String(str), x, y);
+    }
+    function drawImageIfReady(img, x, y, w, h) {
+      if (!img.hidden && img.complete && img.naturalWidth) {
+        const ratio = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+        const sw = w / ratio;
+        const sh = h / ratio;
+        const sx = (img.naturalWidth - sw) / 2;
+        const sy = (img.naturalHeight - sh) / 2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 14);
+        ctx.clip();
+        ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+        ctx.restore();
+      }
+    }
+    function draw(progress) {
+      ctx.fillStyle = "#0e0e0e";
+      ctx.fillRect(0, 0, 720, 1280);
+      text("COUNTRY RATING STUDIO", 360, 48, 20, "#aaaaaa", "bold", "center");
+      text($("name").value.trim().toUpperCase() || "COUNTRY", 360, 112, 43, "white", "900", "center");
+      text($("capital").value, 360, 150, 23, "#dddddd", "normal", "center");
+      text($("year").value, 360, 182, 20, "#aaaaaa", "normal", "center");
+      drawImageIfReady($("flag"), 45, 205, 300, 145);
+      drawImageIfReady($("photo"), 375, 205, 300, 145);
+
+      const avg = average();
+      const shown = avg * Math.min(1, progress / 0.3);
+      const gaugeColor = colorFor(shown);
+      const cx = 360, cy = 445, radius = 67;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = "#252525";
+      ctx.lineWidth = 9;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * shown / 10);
+      ctx.strokeStyle = gaugeColor;
+      ctx.lineWidth = 9;
+      ctx.lineCap = "round";
+      ctx.stroke();
+      ctx.lineCap = "butt";
+
+      text("OVERALL", 360, 540, 20, "#bbbbbb", "bold", "center");
+      text(shown.toFixed(1), 360, 493, 40, gaugeColor, "bold", "center");
+      text("/10", 360, 519, 17, "#aaaaaa", "normal", "center");
+
+      const grad = ctx.createLinearGradient(35, 0, 685, 0);
+      [
+        "#F05BBD", "#8B35D8", "#55BFFF",
+        "#123CBB", "#0C8121", "#FFE600",
+        "#FFB52E", "#FF8A00", "#FF3F00",
+        "#C90003", "#7F0000"
+      ].forEach((c, i, arr) => grad.addColorStop(i / (arr.length - 1), c));
+
+      roundedRect(35, 565, 650, 92, 12, "#222222");
+      roundedRect(43, 573, 634, 76, 8, grad);
+
+      for (let i = 0; i <= 10; i++) {
+        const x = 50 + i * 61.5;
+        text(10 - i, x, 616, 23, "white", "bold", "center");
+      }
+
+      text("THE RANKING", 360, 700, 24, "white", "bold", "center");
+      const startY = 730;
+      const rowH = 48;
+      const reveal = Math.max(0, Math.min(20, Math.floor(((progress - 0.25) / 0.65) * 20)));
+
+      cats.forEach((cat, i) => {
+        if (i >= reveal) return;
+        const col = i < 10 ? 0 : 1;
+        const row = i % 10;
+        const x = col === 0 ? 35 : 370;
+        const y = startY + row * rowH;
+
+        roundedRect(x, y, 315, 39, 7, "#171717");
+        text(i + 1, x + 12, y + 25, 14, "#aaaaaa");
+        text(cat, x + 38, y + 25, 14, "white", "normal");
+        text(vals[i].toFixed(1), x + 300, y + 25, 15, colorFor(vals[i]), "bold", "right");
+      });
+
+      text("Rated by " + $("user").value, 360, 1250, 17, "#e84c91", "bold", "center");
+    }
+
+    status.textContent = "Recording video... Please wait.";
+    $("video").disabled = true;
+    recorder.start(250);
+
+    await new Promise(resolve => {
+      function frame(now) {
+        const progress = Math.min(1, (now - start) / (duration * 1000));
+        draw(progress);
+        if (progress < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          setTimeout(resolve, 200);
+        }
+      }
+      requestAnimationFrame(frame);
+    });
+
+    recorder.stop();
+    await done;
+    stream.getTracks().forEach(track => track.stop());
+
+    const blob = new Blob(chunks, { type: "video/webm" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "country-rating-studio.webm";
+    a.click();
+
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    status.textContent = "Video exported! Import the WebM file into CapCut.";
+  } catch (error) {
+    status.textContent = "Export error: " + error.message;
+  } finally {
+    $("video").disabled = false;
+  }
 };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
